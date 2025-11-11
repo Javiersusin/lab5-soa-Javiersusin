@@ -2,7 +2,7 @@
 
 ## 1. EIP Diagram (Before)
 
-![Before Diagram](diagrams/before.png)
+![Before Diagram](diagrams/before.png) 
 
 Descripción de lo que hace el starter (con bugs):
 - Un `AtomicInteger` (bean `integerSource`) genera números secuenciales cada 100 ms (poller).
