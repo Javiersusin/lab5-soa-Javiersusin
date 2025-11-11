@@ -57,7 +57,8 @@ class IntegrationApplication(
     @Bean
     fun myFlow(integerSource: AtomicInteger): IntegrationFlow =
         integrationFlow(
-            source = { integerSource.getAndIncrement() },
+            source = { integerSource.getAndIncrement() }, // saca de aquí los números, le
+            // llama cada 100ms el poller:
             options = { poller(Pollers.fixedRate(100)) },
         ) {
             transform { num: Int ->
@@ -65,7 +66,8 @@ class IntegrationApplication(
                 num
             }
             route { p: Int ->
-                val channel = if (p % 2 == 0) "evenChannel" else "oddChannel"
+                val channel = if (p % 2 == 0) "evenChannel" else "oddChannel" // aqui se decide
+                // si el número es par o impar, y le mandamos a un canal u otro
                 logger.info("🔀 Router: {} → {}", p, channel)
                 channel
             }
@@ -83,7 +85,8 @@ class IntegrationApplication(
                 "Number $obj"
             }
             handle { p ->
-                logger.info("  ✅ Even Handler: Processed [{}]", p.payload)
+                logger.info("  ✅ Even Handler: Processed [{}]", p.payload) // vemos como el flow para pares,
+                // lo que hace es transformar el número en un string y luego lo loggea
             }
         }
 
@@ -95,19 +98,29 @@ class IntegrationApplication(
     @Bean
     fun oddFlow(): IntegrationFlow =
         integrationFlow("oddChannel") {
-            filter { p: Int ->
-                val passes = p % 2 == 0
+            filter({ p: Int ->
+                // val passes = p % 2 == 0
+                val passes = p % 2 != 0 // este filtro es el correcto, porque queremos que pasen
+                // solo los números impares
                 logger.info("  🔍 Odd Filter: checking {} → {}", p, if (passes) "PASS" else "REJECT")
-                passes
-            } // , { discardChannel("discardChannel") })
+                passes // el filtro estaba mal hecho, porque dejaba pasar los números pares, obviamente un numero que
+                // ha llegado hasta aqui era impar, así que el filtro cortaba a todos los números.
+            }) { discardChannel("discardChannel") }
             transform { obj: Int ->
                 logger.info("  ⚙️  Odd Transformer: {} → 'Number {}'", obj, obj)
                 "Number $obj"
             }
-            handle { p ->
-                logger.info("  ✅ Odd Handler: Processed [{}]", p.payload)
-            }
+          /* handle { p -> // Primer manejador del flow de impares
+                logger.info("  ✅ Odd Handler: Processed [{}]", p.payload)// vemos como el flow para impares,
+                // primero filtra (y descarta todos los números, porque el filtro que dejo comentado está mal hecho),
+                // luego transforma el número en un string y luego lo loggea
+            }*/
+            channel("oddProcessedChannel") // logger en servicio, no aquí
         }
+
+    // creo canal para la salida del flujo de impares, no dos manejkadores
+    @Bean
+    fun oddProcessedChannel() = MessageChannels.direct("oddProcessedChannel")
 
     /**
      * Integration flow for handling discarded messages.
@@ -127,7 +140,7 @@ class IntegrationApplication(
     fun sendNumber() {
         val number = -Random.nextInt(100)
         logger.info("🚀 Gateway injecting: {}", number)
-        sendNumber.sendNumber(number)
+        sendNumber.sendNumber(number) // inyecta en el canal evenChanel
     }
 }
 
@@ -137,8 +150,8 @@ class IntegrationApplication(
  */
 @Component
 class SomeService {
-    @ServiceActivator(inputChannel = "oddChannel")
-    fun handle(p: Any) {
+    @ServiceActivator(inputChannel = "oddProcessedChannel") // conectamos al canal de salida del flow de impares
+    fun handle(p: Any) { // segundo manejador del flow de impares (el service odd)
         logger.info("  🔧 Service Activator: Received [{}] (type: {})", p, p.javaClass.simpleName)
     }
 }
@@ -150,7 +163,8 @@ class SomeService {
  */
 @MessagingGateway
 interface SendNumber {
-    @Gateway(requestChannel = "evenChannel")
+    // @Gateway(requestChannel = "evenChannel") // inyectan en canal evenChanel
+    @Gateway(requestChannel = "oddChannel")
     fun sendNumber(number: Int)
 }
 
