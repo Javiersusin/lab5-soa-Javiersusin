@@ -24,26 +24,24 @@ Descripción de lo que hace el starter (con bugs):
 - Bug 1: Filtro de impares invertido en `oddFlow`.
   - Por qué: condición `p % 2 == 0` (acepta pares) en lugar de aceptar impares.
   - Efecto: todos los impares que entraban al `oddFlow` eran rechazados.
-  - Fix aplicado: `p % 2 != 0`.
+  - Fix aplicado: `p % 2 != 0`. Aunque después he terminado borrándolo, ya que no hacía falta el filtro.
 
 - Bug 2: Competencia entre `oddFlow` y `SomeService` en `oddChannel` (DirectChannel).
   - Por qué: dos suscriptores al mismo canal directo → load-balancing.
   - Efecto: parte de los impares no pasaban por el filtro/transformer y llegaban al servicio sin transformar.
-  - Fix aplicado: se encadena `channel("oddProcessedChannel")` al final del `oddFlow` y se conecta `SomeService` a `oddProcessedChannel`. Así el flujo de impares siempre: oddChannel → filtro → transformer → oddProcessedChannel → SomeService.
+  - Fix aplicado: cambiar `oddChannel` a `PublishSubscribeChannel` para broadcasting.
 
 - Bug 3: Gateway apuntando a `evenChannel`.
   - Por qué: `@Gateway(requestChannel = "evenChannel")` enviaba negativos directamente a pares.
-  - Efecto: impares negativos tratados como pares, saltándose el filtro/transformador de impares.
-  - Fix aplicado: `@Gateway(requestChannel = "oddChannel")` (según requisitos dados para que negativos sigan la ruta de impares).
+  - Efecto: Los negativos impares se procesaban como pares.
+  - Fix aplicado: enviamos todo a NumberChannel, que luego el router distribuye correctamente.
 
 ---
 
 ## 3. What You Learned
 
-- Spring Integration DSL en Kotlin: definición de flows con `integrationFlow`, uso de `route`, `filter`, `transform`, `handle`, configuración de `poller` y `@ServiceActivator`.
-- Desacoplo: separar el procesamiento (flow) del consumo final (`SomeService`) mediante un canal intermedio (`oddProcessedChannel`) elimina carreras y comportamientos inconsistentes.
-
----
+- He entendido que puedes crear las funciones en "bloques" conectados con channels intermedios, lo que facilita la lectura y el mantenimiento del código. De esta forma sabría como implementarlo ahora en el código del proyecto final de asignatura.
+- He aprendido a utilizar los diferentes tipos de canales (DirectChannel, PublishSubscribeChannel) y cuándo es apropiado usar cada uno según el caso de uso (competencia vs broadcast).
 
 ## 4. AI Disclosure
 **Did you use AI tools?** (ChatGPT, Copilot, Claude, etc.)
@@ -53,4 +51,3 @@ comprendía cómo hacer bien el markdown para mermaid y estaba teniendo problema
 
 ## Additional Notes
 - Quiero destacar que todas las preguntas que se van haciendo en el guion, las he ido respondiendo en forma de comentarios en el propio código, esto me ayudó a entender mejor el flujo general e identificar los bugs más fácilmente.
-
