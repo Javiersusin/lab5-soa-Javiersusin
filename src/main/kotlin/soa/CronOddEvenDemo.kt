@@ -44,11 +44,11 @@ class IntegrationApplication(
     fun integerSource(): AtomicInteger = AtomicInteger()
 
     /**
-     * Defines a publish-subscribe channel for even numbers.
+     * Defines a publish-subscribe channel for odd numbers.
      * Multiple subscribers can receive messages from this channel.
      */
     @Bean
-    fun evenChannel(): PublishSubscribeChannelSpec<*> = MessageChannels.publishSubscribe()
+    fun oddChannel(): PublishSubscribeChannelSpec<*> = MessageChannels.publishSubscribe()
 
     /**
      * Main integration flow that polls the integer source and routes messages.
@@ -56,11 +56,8 @@ class IntegrationApplication(
      */
     @Bean
     fun myFlow(integerSource: AtomicInteger): IntegrationFlow =
-        integrationFlow(
-            source = { integerSource.getAndIncrement() }, // saca de aquí los números, le
-            // llama cada 100ms el poller:
-            options = { poller(Pollers.fixedRate(100)) },
-        ) {
+        integrationFlow("NumberChannel") {
+            // canal conjunto para pares e impares
             transform { num: Int ->
                 logger.info("📥 Source generated number: {}", num)
                 num
@@ -68,6 +65,24 @@ class IntegrationApplication(
             route { p: Int ->
                 val channel = if (p % 2 == 0) "evenChannel" else "oddChannel" // aqui se decide
                 // si el número es par o impar, y le mandamos a un canal u otro
+                logger.info("🔀 Router: {} → {}", p, channel)
+                channel
+            }
+        }
+
+    @Bean
+    fun myFlowNum(integerSource: AtomicInteger): IntegrationFlow =
+        integrationFlow(
+            source = { integerSource.getAndIncrement() }, // saca de aquí los números, le
+            // llama cada 100ms el poller
+            options = { poller(Pollers.fixedRate(100)) },
+        ) {
+            transform { num: Int ->
+                logger.info("📥 Source generated number: {}", num)
+                num
+            }
+            route { p: Int ->
+                val channel = "NumberChannel"
                 logger.info("🔀 Router: {} → {}", p, channel)
                 channel
             }
@@ -98,38 +113,16 @@ class IntegrationApplication(
     @Bean
     fun oddFlow(): IntegrationFlow =
         integrationFlow("oddChannel") {
-            filter({ p: Int ->
-                // val passes = p % 2 == 0
-                val passes = p % 2 != 0 // este filtro es el correcto, porque queremos que pasen
-                // solo los números impares
-                logger.info("  🔍 Odd Filter: checking {} → {}", p, if (passes) "PASS" else "REJECT")
-                passes // el filtro estaba mal hecho, porque dejaba pasar los números pares, obviamente un numero que
-                // ha llegado hasta aqui era impar, así que el filtro cortaba a todos los números.
-            }) { discardChannel("discardChannel") }
+            // filtro eliminado, ya que no es posible que lleguen numeros pares a este flow
             transform { obj: Int ->
                 logger.info("  ⚙️  Odd Transformer: {} → 'Number {}'", obj, obj)
                 "Number $obj"
             }
-          /* handle { p -> // Primer manejador del flow de impares
-                logger.info("  ✅ Odd Handler: Processed [{}]", p.payload)// vemos como el flow para impares,
+            handle { p ->
+                // Primer manejador del flow de impares
+                logger.info("  ✅ Odd Handler: Processed [{}]", p.payload) // vemos como el flow para impares,
                 // primero filtra (y descarta todos los números, porque el filtro que dejo comentado está mal hecho),
                 // luego transforma el número en un string y luego lo loggea
-            }*/
-            channel("oddProcessedChannel") // logger en servicio, no aquí
-        }
-
-    // creo canal para la salida del flujo de impares, no dos manejkadores
-    @Bean
-    fun oddProcessedChannel() = MessageChannels.direct("oddProcessedChannel")
-
-    /**
-     * Integration flow for handling discarded messages.
-     */
-    @Bean
-    fun discarded(): IntegrationFlow =
-        integrationFlow("discardChannel") {
-            handle { p ->
-                logger.info("  🗑️  Discard Handler: [{}]", p.payload)
             }
         }
 
@@ -150,7 +143,7 @@ class IntegrationApplication(
  */
 @Component
 class SomeService {
-    @ServiceActivator(inputChannel = "oddProcessedChannel") // conectamos al canal de salida del flow de impares
+    @ServiceActivator(inputChannel = "oddChannel") // conectamos al canal de salida del flow de impares
     fun handle(p: Any) { // segundo manejador del flow de impares (el service odd)
         logger.info("  🔧 Service Activator: Received [{}] (type: {})", p, p.javaClass.simpleName)
     }
@@ -163,8 +156,7 @@ class SomeService {
  */
 @MessagingGateway
 interface SendNumber {
-    // @Gateway(requestChannel = "evenChannel") // inyectan en canal evenChanel
-    @Gateway(requestChannel = "oddChannel")
+    @Gateway(requestChannel = "NumberChannel")
     fun sendNumber(number: Int)
 }
 
